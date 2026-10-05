@@ -68,9 +68,8 @@ test("controle: precies één modus; op het Cloudflare-spoor altijd een eigen da
   assert.deepEqual(leesArgumenten(["--inrichten", "--naam", "x1", "--eigenaar", "Org", "--groepen", "kantoor, it"]).groepen, ["kantoor", "it"]);
 });
 
-test("reviewer: Stage Two zolang die lid is, anders de gebruiker zelf", () => {
-  assert.equal(kiesReviewer({ login: "bart", stageTwoLid: true }), STAGE_TWO_LOGIN);
-  assert.equal(kiesReviewer({ login: "bart", stageTwoLid: false }), "bart");
+test("reviewer: altijd de bouwer zelf, ook als Stage Two lid is", () => {
+  assert.equal(kiesReviewer({ login: "bart" }), "bart");
 });
 
 test("invullen: projectnaam, omschrijving en reviewer erin, aanwijzingen eruit", () => {
