@@ -39,12 +39,18 @@
  *
  * Er komt geen token van Stage Two aan te pas (KTD5): alles loopt via `gh` met de login
  * van de gebruiker. De map van de gebruiker wordt alleen aangevuld met één nieuwe
- * submap; bestaat die al, dan stopt het script.
+ * submap.
+ *
+ * Hervatten: stopt `--doe-het` halverwege (netwerk, een pnpm-versiewissel op Windows),
+ * dan maakt hetzelfde commando het af. Bestaat de repo al en is hij uit deze template
+ * gemaakt, en is de map leeg of een kloon van die repo, dan gaat het script verder met
+ * wat er nog ontbreekt: invullen, installeren, committen, pushen, main beschermen en de
+ * omgevingen. Een assistent zet die dingen dus nooit met de hand.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { eersteRegel, ghAanwezig, ghIngelogd, git, sh } from "../../../lib/repo.mjs";
+import { ghAanwezig, ghIngelogd, git, sh } from "../../../lib/repo.mjs";
 
 export const TEMPLATE = "Stage-Two-AI/stack-template-cloudflare";
 export const STAGE_TWO_LOGIN = "StageTwoAI";
@@ -322,10 +328,133 @@ function wachtTotGevuld(repo, { pogingen = 30, wachtMs = 2000 } = {}) {
 
 function zetRuleset(repo) {
   try {
+    const bestaand = ghJson([`repos/${repo}/rulesets`]);
+    const naam = JSON.parse(readFileSync(RULESET_PAD, "utf8")).name;
+    if (Array.isArray(bestaand) && bestaand.some((r) => r.name === naam)) return { gelukt: true, al: true };
+  } catch {
+    // Opvragen mislukt: dan proberen we hem gewoon te zetten.
+  }
+  try {
     sh("gh", ["api", `repos/${repo}/rulesets`, "-X", "POST", "--input", RULESET_PAD]);
     return { gelukt: true };
   } catch (fout) {
-    return { gelukt: false, reden: eersteRegel(fout) };
+    return { gelukt: false, reden: foutTekst(fout) };
+  }
+}
+
+/**
+ * De volledige foutmelding van een mislukte stap, niet alleen de eerste regel: op Windows
+ * brak de eerste regel bij Bob af na "C:", en daarmee was de oorzaak niet te vinden.
+ * Lege regels eruit, hooguit de laatste `maxRegels`.
+ */
+export function foutTekst(fout, maxRegels = 40) {
+  const ruw = [fout?.stderr, fout?.stdout, fout?.message]
+    .map((d) => (d === undefined || d === null ? "" : String(d)))
+    .find((d) => d.trim()) ?? String(fout);
+  const regels = ruw.split(/\r?\n/).map((r) => r.trimEnd()).filter((r) => r.trim());
+  const staart = regels.slice(-maxRegels);
+  return (regels.length > maxRegels ? ["…", ...staart] : staart).join("\n");
+}
+
+/**
+ * Pakketten installeren. De template pint een pnpm-versie (`packageManager`); staat er
+ * een andere globaal, dan haalt pnpm de gepinde eerst op en schakelt over. Dat liep op
+ * Windows één keer vast. Daarom eerst `pnpm --version` in de map (dat doet de wissel
+ * los van de install) en bij een fout de install nog één keer.
+ */
+export function installeer(map, { run = (...args) => pnpm(map, ...args) } = {}) {
+  try {
+    run("--version");
+  } catch {
+    // De wissel zelf mag mislukken; de install hieronder probeert het opnieuw.
+  }
+  try {
+    run("install", "--silent");
+    return { pogingen: 1 };
+  } catch {
+    run("install", "--silent");
+    return { pogingen: 2 };
+  }
+}
+
+/**
+ * Beslist of `--doe-het` nieuw begint, verdergaat of weigert.
+ *   repo         bestaat de repo al op GitHub
+ *   uitTemplate  is hij gemaakt uit TEMPLATE (anders is het iets van iemand anders)
+ *   map          bestaat de map al
+ *   mapIsKloon   is die map een kloon van precies deze repo
+ */
+export function hervatBesluit({ repo, uitTemplate, map, mapIsKloon }) {
+  if (!repo && !map) return { besluit: "nieuw" };
+  if (!repo && map) return { besluit: "weiger", reden: "de map bestaat al, maar de repo niet; kies een andere naam of map" };
+  if (!uitTemplate) return { besluit: "weiger", reden: "de repo bestaat al en komt niet uit de Stage Two-template; kies een andere naam" };
+  if (map && !mapIsKloon) return { besluit: "weiger", reden: "de repo bestaat al, maar de map is geen kloon van die repo; kies een andere map" };
+  return { besluit: "hervat" };
+}
+
+/**
+ * Zet de omgevingen van de app goed: `production` en `preview` bestaan en laten alleen
+ * `main` toe, en een lege `proef-beheer` (van de proef-workflows in de eerste commit van
+ * de template) gaat weg. GitHub maakt een omgeving vanzelf aan zodra een workflow ernaar
+ * verwijst, zonder beperking; daarna weigert App inrichten terecht ("niet beperkt tot
+ * main"). `api(methode, pad, velden)` geeft de JSON terug (of null); in tests nep.
+ */
+export function regelOmgevingen(repo, { api = ghApi } = {}) {
+  const gedaan = [];
+  for (const omgeving of ["production", "preview"]) {
+    api("PUT", `repos/${repo}/environments/${omgeving}`, {
+      "deployment_branch_policy[protected_branches]": false,
+      "deployment_branch_policy[custom_branch_policies]": true,
+    });
+    const lijst = api("GET", `repos/${repo}/environments/${omgeving}/deployment-branch-policies?per_page=100`) ?? {};
+    const regels = lijst.branch_policies ?? [];
+    for (const regel of regels) {
+      if (!(regel.name === "main" && (regel.type ?? "branch") === "branch")) {
+        api("DELETE", `repos/${repo}/environments/${omgeving}/deployment-branch-policies/${regel.id}`);
+      }
+    }
+    if (!regels.some((r) => r.name === "main" && (r.type ?? "branch") === "branch")) {
+      api("POST", `repos/${repo}/environments/${omgeving}/deployment-branch-policies`, { name: "main", type: "branch" });
+    }
+    gedaan.push(`${omgeving}: alleen main`);
+  }
+  const alle = api("GET", `repos/${repo}/environments?per_page=100`) ?? {};
+  if ((alle.environments ?? []).some((o) => o.name === "proef-beheer")) {
+    const geheimen = api("GET", `repos/${repo}/environments/proef-beheer/secrets`) ?? {};
+    if ((geheimen.total_count ?? 0) === 0) {
+      api("DELETE", `repos/${repo}/environments/proef-beheer`);
+      gedaan.push("proef-beheer: weg (leeg)");
+    } else {
+      gedaan.push("proef-beheer: blijft (er staan geheimen in; vraag Stage Two)");
+    }
+  }
+  return gedaan;
+}
+
+/** `gh api` met velden: booleans als -F (getypt), de rest als -f. */
+function ghApi(methode, pad, velden = {}) {
+  const args = ["api", "-X", methode, pad];
+  for (const [sleutel, waarde] of Object.entries(velden)) {
+    args.push(typeof waarde === "string" ? "-f" : "-F", `${sleutel}=${waarde}`);
+  }
+  const uit = sh("gh", args);
+  return uit ? JSON.parse(uit) : null;
+}
+
+function uitTemplate(repo) {
+  try {
+    return ghJson([`repos/${repo}`]).template_repository?.full_name?.toLowerCase() === TEMPLATE.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+function isKloonVan(map, repo) {
+  try {
+    const url = git(map, "remote", "get-url", "origin").toLowerCase();
+    return url.replace(/\.git$/, "").endsWith(`/${repo.toLowerCase()}`) || url.endsWith(`:${repo.toLowerCase()}.git`);
+  } catch {
+    return false;
   }
 }
 
@@ -447,7 +576,7 @@ export function richtIn(arg, { cwd = process.cwd(), wachtMs = 5000, maxWachtMinu
   try {
     ({ toegang, sha } = leesToegang(beheer));
   } catch (f) {
-    return { status: "mislukt", reden: `toegang.json van ${beheer} is niet te lezen: ${eersteRegel(f)}` };
+    return { status: "mislukt", reden: `toegang.json van ${beheer} is niet te lezen: ${foutTekst(f)}` };
   }
   const { staatErin, groepen } = controleerToegang(toegang, arg.naam);
   if (!staatErin) {
@@ -471,7 +600,7 @@ export function richtIn(arg, { cwd = process.cwd(), wachtMs = 5000, maxWachtMinu
         reden: `de app moet eerst in toegang.json; de eigenaar van ${beheer} keurt deze pull request goed, daarna draai je --inrichten opnieuw`,
       };
     } catch (f) {
-      return { status: "mislukt", reden: `de pull request op ${beheer} openen mislukte: ${eersteRegel(f)} (heb je Write op ${beheer}?)` };
+      return { status: "mislukt", reden: `de pull request op ${beheer} openen mislukte: ${foutTekst(f)} (heb je Write op ${beheer}?)` };
     }
   }
 
@@ -479,7 +608,7 @@ export function richtIn(arg, { cwd = process.cwd(), wachtMs = 5000, maxWachtMinu
   try {
     sh("gh", ["workflow", "run", BEHEER_WORKFLOW, "--repo", beheer, "-f", `app=${arg.naam}`, "-f", "droogloop=false"], { cwd });
   } catch (f) {
-    return { status: "mislukt", reden: `de workflow starten mislukte: ${eersteRegel(f)} (heb je Write op ${beheer}?)` };
+    return { status: "mislukt", reden: `de workflow starten mislukte: ${foutTekst(f)} (heb je Write op ${beheer}?)` };
   }
 
   // GitHub registreert de run een paar seconden na het starten; zoek de eerste die van ná de start is.
@@ -553,9 +682,16 @@ export function voorcontrole(arg, { cwd = process.cwd() } = {}) {
     return { status: "mislukt", reden: `je account ${gebruiker} is geen lid van de organisatie ${arg.eigenaar}` };
   }
   const repo = `${arg.eigenaar}/${arg.naam}`;
-  if (repoBestaat(repo)) return { status: "mislukt", reden: `de repo ${repo} bestaat al; kies een andere naam` };
   const doel = resolve(arg.map ?? cwd, arg.naam);
-  if (existsSync(doel)) return { status: "mislukt", reden: `de map ${doel} bestaat al; kies een andere naam of map` };
+  const repoEr = repoBestaat(repo);
+  const mapEr = existsSync(doel);
+  const besluit = hervatBesluit({
+    repo: repoEr,
+    uitTemplate: repoEr && uitTemplate(repo),
+    map: mapEr,
+    mapIsKloon: mapEr && isKloonVan(doel, repo),
+  });
+  if (besluit.besluit === "weiger") return { status: "mislukt", reden: `${besluit.reden} (${repo}, ${doel})` };
   if (arg.database === "gedeeld" && !repoBestaat(arg.gedeeldEigenaar)) {
     return { status: "mislukt", reden: `de app ${arg.gedeeldEigenaar} die de database bezit is niet gevonden op GitHub` };
   }
@@ -572,6 +708,7 @@ export function voorcontrole(arg, { cwd = process.cwd() } = {}) {
       organisatie: org,
       githubPlan: plan(arg.eigenaar),
       template: TEMPLATE,
+      hervatten: besluit.besluit === "hervat",
     },
   };
 }
@@ -579,35 +716,53 @@ export function voorcontrole(arg, { cwd = process.cwd() } = {}) {
 export function doeHet(arg, { cwd = process.cwd() } = {}) {
   const controle = voorcontrole(arg, { cwd });
   if (controle.status !== "klaar") return controle;
-  const { repo, map, reviewer, gebruiker } = controle.plan;
-  const uitkomst = { status: "mislukt", repo, url: controle.plan.url };
+  const { repo, map, reviewer, gebruiker, hervatten } = controle.plan;
+  const uitkomst = { status: "mislukt", repo, url: controle.plan.url, hervat: hervatten };
+  const opnieuw = " Draai hetzelfde commando nog een keer; het gaat verder waar het stopte. Zet niets met de hand.";
 
-  try {
-    sh("gh", [
-      "repo",
-      "create",
-      repo,
-      "--private",
-      "--template",
-      TEMPLATE,
-      ...(arg.omschrijving ? ["--description", arg.omschrijving] : []),
-    ]);
-  } catch (fout) {
-    return { status: "mislukt", reden: `de repo aanmaken mislukte: ${eersteRegel(fout)}` };
+  if (!hervatten || !repoBestaat(repo)) {
+    try {
+      sh("gh", [
+        "repo",
+        "create",
+        repo,
+        "--private",
+        "--template",
+        TEMPLATE,
+        ...(arg.omschrijving ? ["--description", arg.omschrijving] : []),
+      ]);
+    } catch (fout) {
+      return { status: "mislukt", reden: `de repo aanmaken mislukte: ${foutTekst(fout)}` };
+    }
   }
   if (!wachtTotGevuld(repo)) {
-    return { ...uitkomst, reden: `GitHub heeft de template na een minuut nog niet gekopieerd; kijk op ${controle.plan.url}` };
+    return { ...uitkomst, reden: `GitHub heeft de template na een minuut nog niet gekopieerd; kijk op ${controle.plan.url}.${opnieuw}` };
   }
 
+  // Zo vroeg mogelijk: de eerste commit van de template start al workflows die de
+  // omgevingen zonder beperking aanmaken.
+  let omgevingen;
   try {
-    mkdirSync(dirname(map), { recursive: true });
-    sh("gh", ["repo", "clone", repo, map, "--", "--quiet"], { timeout: 300000 });
+    omgevingen = regelOmgevingen(repo);
+  } catch (fout) {
+    return { ...uitkomst, reden: `de omgevingen production en preview beperken tot main mislukte: ${foutTekst(fout)}.${opnieuw}` };
+  }
+
+  let stap = "klonen";
+  try {
+    if (!existsSync(map)) {
+      mkdirSync(dirname(map), { recursive: true });
+      sh("gh", ["repo", "clone", repo, map, "--", "--quiet"], { timeout: 300000 });
+    }
+    stap = "invullen";
     verwijderNietMeenemen(map);
     vulIn(map, { naam: arg.naam, omschrijving: arg.omschrijving, reviewer });
     zetWorkerNaam(map, arg.naam);
     zetDatabaseStand(map, arg);
-    pnpm(map, "install", "--silent");
+    stap = "pakketten installeren (pnpm install)";
+    installeer(map);
 
+    stap = "committen en pushen";
     const naam = git(map, "config", "--get", "user.name") || gebruiker;
     let email;
     try {
@@ -617,13 +772,23 @@ export function doeHet(arg, { cwd = process.cwd() } = {}) {
     }
     email ||= `${gebruiker}@users.noreply.github.com`;
     git(map, "add", "-A");
-    git(map, "-c", `user.name=${naam}`, "-c", `user.email=${email}`, "commit", "-q", "-m", "chore: projectnaam, reviewer, Worker-naam en databasestand invullen");
-    git(map, "push", "-q", "origin", "HEAD");
+    if (git(map, "status", "--porcelain")) {
+      git(map, "-c", `user.name=${naam}`, "-c", `user.email=${email}`, "commit", "-q", "-m", "chore: projectnaam, reviewer, Worker-naam en databasestand invullen");
+    }
+    git(map, "fetch", "-q", "origin");
+    const tak = git(map, "rev-parse", "--abbrev-ref", "HEAD");
+    const voor = Number(git(map, "rev-list", "--count", `origin/${tak}..HEAD`) || "0");
+    if (voor > 0) git(map, "push", "-q", "origin", "HEAD");
   } catch (fout) {
-    return { ...uitkomst, map, reden: `het klaarzetten van de app mislukte: ${eersteRegel(fout)}` };
+    return { ...uitkomst, map, reden: `het klaarzetten van de app mislukte bij ${stap}: ${foutTekst(fout)}.${opnieuw}` };
   }
 
   const ruleset = zetRuleset(repo);
+  try {
+    omgevingen = regelOmgevingen(repo);
+  } catch (fout) {
+    return { ...uitkomst, map, reden: `de omgevingen production en preview beperken tot main mislukte: ${foutTekst(fout)}.${opnieuw}` };
+  }
   return {
     status: "gemaakt",
     repo,
@@ -631,7 +796,9 @@ export function doeHet(arg, { cwd = process.cwd() } = {}) {
     map,
     database: arg.database,
     reviewer,
+    hervat: hervatten,
     ruleset,
+    omgevingen,
     nogTeDoen: nogTeDoen({ database: arg.database, ruleset }),
   };
 }
@@ -655,6 +822,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     schrijf(arg.inrichten ? richtIn(arg) : arg.doeHet ? doeHet(arg) : voorcontrole(arg), arg.json);
   } catch (fout) {
-    schrijf({ status: "mislukt", reden: eersteRegel(fout) }, arg.json);
+    schrijf({ status: "mislukt", reden: foutTekst(fout) }, arg.json);
   }
 }
