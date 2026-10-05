@@ -127,12 +127,12 @@ export function controleerArgumenten(arg) {
 // ---------------------------------------------------------------- zuivere stappen
 
 /**
- * Wie wordt de reviewer in CODEOWNERS? Stage Two zolang die bij de organisatie hoort;
- * anders de gebruiker zelf, want een CODEOWNERS die naar iemand zonder toegang wijst
- * blokkeert het mergen op de gevoelige paden.
+ * Wie wordt de reviewer in CODEOWNERS? Altijd de bouwer zelf: hij merget zijn eigen
+ * pull requests op groene checks, en Stage Two wil geen melding bij elke PR van elke
+ * klant-app. Toegang en sleutels bewaakt de eigenaar in stack-beheer, niet hier.
  */
-export function kiesReviewer({ login, stageTwoLid }) {
-  return stageTwoLid ? STAGE_TWO_LOGIN : login;
+export function kiesReviewer({ login }) {
+  return login;
 }
 
 /** De "Vervang dit"-aanwijzingen weg, de projectnaam en omschrijving erin. */
@@ -289,14 +289,6 @@ function magInOrganisatie(eigenaar, gebruiker) {
   }
 }
 
-function stageTwoIsLid(eigenaar) {
-  try {
-    sh("gh", ["api", `orgs/${eigenaar}/members/${STAGE_TWO_LOGIN}`]);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function plan(eigenaar) {
   try {
@@ -568,7 +560,6 @@ export function voorcontrole(arg, { cwd = process.cwd() } = {}) {
     return { status: "mislukt", reden: `de app ${arg.gedeeldEigenaar} die de database bezit is niet gevonden op GitHub` };
   }
 
-  const stageTwoLid = org ? stageTwoIsLid(arg.eigenaar) : false;
   return {
     status: "klaar",
     plan: {
@@ -576,7 +567,7 @@ export function voorcontrole(arg, { cwd = process.cwd() } = {}) {
       url: `https://github.com/${repo}`,
       map: doel,
       database: arg.database,
-      reviewer: kiesReviewer({ login: gebruiker, stageTwoLid }),
+      reviewer: kiesReviewer({ login: gebruiker }),
       gebruiker,
       organisatie: org,
       githubPlan: plan(arg.eigenaar),
