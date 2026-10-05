@@ -1,0 +1,12 @@
+{
+  "name": "stagetwo-stack-plugin-cloudflare",
+  "private": true,
+  "type": "module",
+  "description": "Stage Two-plugin voor Claude Code. Geen dependencies: alles draait op Node 22 zelf.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test 'test/*.test.mjs' 'lib/*.test.mjs' 'hooks/*.test.mjs' 'skills/*/scripts/*.test.mjs' 'beheer/*.test.mjs'"
+  }
+}

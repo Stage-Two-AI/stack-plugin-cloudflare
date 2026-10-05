@@ -1,0 +1,22 @@
+{
+  "name": "stagetwo-cloudflare",
+  "owner": {
+    "name": "Stage Two",
+    "email": "info@stagetwo.nl"
+  },
+  "metadata": {
+    "description": "Plugins van Stage Two voor Claude Code, voor apps op Cloudflare en Supabase."
+  },
+  "plugins": [
+    {
+      "name": "stack-cloudflare",
+      "description": "De werkwijze van Stage Two in Claude Code voor apps op Cloudflare en Supabase: de vaste routes, de bewaking van de gedeelde template, en de skills /stack-cloudflare:installatie, /stack-cloudflare:nieuwe-app, /stack-cloudflare:verder-werken en /stack-cloudflare:updaten.",
+      "author": {
+        "name": "Stage Two",
+        "email": "info@stagetwo.nl"
+      },
+      "homepage": "https://github.com/Stage-Two-AI/stack-plugin-cloudflare",
+      "source": "./"
+    }
+  ]
+}

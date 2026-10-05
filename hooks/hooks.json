@@ -1,0 +1,29 @@
+{
+  "description": "De bewaker van de Stage Two-template: houdt de agent tegen bij templatebestanden en riskante commando's (PreToolUse) en meldt bij sessiestart dat er een nieuwere template is. Doet niets in een repo zonder .claude/stack-manifest.json en niets als node ontbreekt.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 && node \"${CLAUDE_PLUGIN_ROOT}/hooks/stack-hook.mjs\" || true",
+            "timeout": 10,
+            "statusMessage": "Afspraken controleren…"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v node >/dev/null 2>&1 && node \"${CLAUDE_PLUGIN_ROOT}/hooks/stack-hook.mjs\" || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

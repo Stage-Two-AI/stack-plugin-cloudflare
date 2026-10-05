@@ -1,0 +1,13 @@
+{
+  "name": "stack-cloudflare",
+  "version": "1.0.0",
+  "description": "De werkwijze van Stage Two in Claude Code, voor apps op Cloudflare en Supabase. Vier skills: /stack-cloudflare:installatie voor een nieuwe computer, /stack-cloudflare:nieuwe-app om zelf een app te beginnen, /stack-cloudflare:verder-werken voor elke wijziging aan een app, en /stack-cloudflare:updaten om plugin, computer en apps bij te werken. Plus de bewaking van de gedeelde template.",
+  "author": {
+    "name": "Stage Two",
+    "email": "info@stagetwo.nl"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Stage-Two-AI/stack-plugin-cloudflare",
+  "repository": "https://github.com/Stage-Two-AI/stack-plugin-cloudflare",
+  "keywords": ["stage-two", "stack", "cloudflare", "supabase", "template", "werkwijze"]
+}

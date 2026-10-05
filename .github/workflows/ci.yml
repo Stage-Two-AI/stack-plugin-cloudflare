@@ -1,0 +1,26 @@
+# De enige check van deze repo. De ruleset op main eist hem (.github/ruleset.json), dus
+# een release is nooit meer dan een merge na een groene run.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # De geheimentest leest ook de geschiedenis (git log -p); die moet er dus zijn.
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: git config --global user.name "CI" && git config --global user.email "ci@stagetwo.nl"
+      - run: npm test
