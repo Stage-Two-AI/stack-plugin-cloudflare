@@ -93,9 +93,17 @@ Zeg dan: "Ik maak hem nu aan; dat duurt een paar minuten." Draai hetzelfde comma
 `--doe-het` in plaats van `--droogloop`. Vraag geen toestemming meer; het typen van
 `/stack-cloudflare:nieuwe-app` en de bevestiging van het plan waren de opdracht.
 
-- `mislukt`: geef `reden` door. Staat er een `repo` in het antwoord, zeg dan dat de repo
-  op GitHub al bestaat en dat Stage Two of een tweede poging met een andere naam nodig
-  is. Verwijder zelf niets.
+- `mislukt`: geef `reden` door (dat is de volledige foutmelding). Staat er een `repo` in
+  het antwoord, dan is de repo al aangemaakt: **draai precies hetzelfde `--doe-het`-commando
+  nog een keer**. Het script ziet dat de repo uit de template komt en maakt af wat er nog
+  ontbreekt (invullen, installeren, committen, pushen, main beschermen, de omgevingen).
+  Lukt het de tweede keer ook niet, stop dan en geef de melding door aan de gebruiker voor
+  Stage Two.
+
+  **Zet nooit zelf repo-instellingen met de hand**: geen `gh api .../rulesets`, geen
+  omgevingen, geen secrets, geen `git push` naar main. Dat doet alleen het script. Claude
+  Code houdt zo'n handmatige aanroep terecht tegen, en een half met de hand ingerichte
+  repo laat later App inrichten vastlopen. Verwijder ook zelf niets.
 - `gemaakt`: zeg waar de app staat (`url` en `map`). Ga dan door naar stap 5b; de
   `nogTeDoen` uit dit antwoord gebruik je alleen als stap 5b `geen-beheer` geeft.
 

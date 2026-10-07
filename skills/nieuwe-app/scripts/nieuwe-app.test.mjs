@@ -13,6 +13,10 @@ import {
   nogTeDoen,
   nogTeDoenNaInrichting,
   controleerToegang,
+  foutTekst,
+  hervatBesluit,
+  installeer,
+  regelOmgevingen,
   verwijderNietMeenemen,
   voegAppToe,
   vulIn,
@@ -204,4 +208,108 @@ test("nietMeenemen: beheer/ en de proef-workflows gaan weg, de rest blijft", () 
     assert.ok(existsSync(join(map, blijft)), blijft);
   }
   assert.deepEqual(verwijderNietMeenemen(tijdelijkeMap("geen-manifest-")), [], "zonder manifest: niets");
+});
+
+test("foutTekst: de hele melding, niet alleen de eerste regel, en hooguit de staart", () => {
+  const fout = Object.assign(new Error("Command failed: pnpm install"), {
+    stderr: "ERR_PNPM_X  Could not resolve the installed @pnpm/exe at C:\\Users\\bob\\AppData\\Local\\pnpm\n\nDetails: EPERM\n",
+  });
+  const tekst = foutTekst(fout);
+  assert.match(tekst, /C:\\Users\\bob/);
+  assert.match(tekst, /Details: EPERM/);
+  const lang = { stderr: Array.from({ length: 60 }, (_, i) => `regel ${i + 1}`).join("\n") };
+  const staart = foutTekst(lang, 40).split("\n");
+  assert.equal(staart[0], "…");
+  assert.equal(staart.at(-1), "regel 60");
+  assert.equal(staart.length, 41);
+  assert.equal(foutTekst(new Error("alleen een bericht")), "alleen een bericht");
+});
+
+test("installeer: eerst pnpm --version, en bij een fout de install nog één keer", () => {
+  const aanroepen = [];
+  let fouten = 1;
+  const run = (...args) => {
+    aanroepen.push(args.join(" "));
+    if (args[0] === "install" && fouten-- > 0) throw new Error("versiewissel mislukt");
+    return "";
+  };
+  assert.deepEqual(installeer("/x", { run }), { pogingen: 2 });
+  assert.deepEqual(aanroepen, ["--version", "install --silent", "install --silent"]);
+
+  const goed = [];
+  assert.deepEqual(installeer("/x", { run: (...a) => goed.push(a.join(" ")) }), { pogingen: 1 });
+  assert.deepEqual(goed, ["--version", "install --silent"]);
+
+  assert.throws(() => installeer("/x", { run: (a) => { if (a === "install") throw new Error("kapot"); } }), /kapot/);
+});
+
+test("hervatBesluit: nieuw, hervatten, of weigeren als het niet van ons is", () => {
+  assert.equal(hervatBesluit({ repo: false, map: false }).besluit, "nieuw");
+  assert.equal(hervatBesluit({ repo: true, uitTemplate: true, map: false }).besluit, "hervat");
+  assert.equal(hervatBesluit({ repo: true, uitTemplate: true, map: true, mapIsKloon: true }).besluit, "hervat");
+  assert.equal(hervatBesluit({ repo: true, uitTemplate: false, map: false }).besluit, "weiger");
+  assert.equal(hervatBesluit({ repo: true, uitTemplate: true, map: true, mapIsKloon: false }).besluit, "weiger");
+  assert.equal(hervatBesluit({ repo: false, map: true }).besluit, "weiger");
+});
+
+function nepGitHub(beginstand) {
+  const omgevingen = structuredClone(beginstand);
+  let volgendId = 100;
+  const log = [];
+  const api = (methode, pad, velden = {}) => {
+    log.push(`${methode} ${pad}`);
+    const m = /environments(?:\/([^/?]+))?(?:\/(deployment-branch-policies|secrets)(?:\/(\d+))?)?/.exec(pad);
+    const [, naam, sub, id] = m;
+    if (!naam) return { environments: Object.keys(omgevingen).map((n) => ({ name: n })) };
+    if (methode === "PUT" && !sub) {
+      omgevingen[naam] ??= { regels: [], geheimen: 0 };
+      omgevingen[naam].beperkt = velden["deployment_branch_policy[custom_branch_policies]"] === true;
+      return {};
+    }
+    if (methode === "DELETE" && !sub) {
+      delete omgevingen[naam];
+      return null;
+    }
+    if (sub === "secrets") return { total_count: omgevingen[naam].geheimen };
+    if (methode === "GET") return { branch_policies: omgevingen[naam].regels };
+    if (methode === "POST") {
+      omgevingen[naam].regels.push({ id: volgendId++, name: velden.name, type: velden.type });
+      return {};
+    }
+    if (methode === "DELETE") {
+      omgevingen[naam].regels = omgevingen[naam].regels.filter((r) => r.id !== Number(id));
+      return null;
+    }
+    throw new Error(`onverwacht: ${methode} ${pad}`);
+  };
+  return { api, omgevingen, log };
+}
+
+test("regelOmgevingen: production en preview alleen main, lege proef-beheer weg", () => {
+  // Zo trof App inrichten het bij Bob aan: drie omgevingen, geen enkele beperkt.
+  const gh = nepGitHub({
+    production: { regels: [], geheimen: 0 },
+    preview: { regels: [{ id: 1, name: "*", type: "branch" }], geheimen: 0 },
+    "proef-beheer": { regels: [], geheimen: 0 },
+  });
+  const gedaan = regelOmgevingen("Org/app", { api: gh.api });
+  for (const naam of ["production", "preview"]) {
+    assert.equal(gh.omgevingen[naam].beperkt, true);
+    assert.deepEqual(gh.omgevingen[naam].regels.map((r) => r.name), ["main"]);
+  }
+  assert.equal(gh.omgevingen["proef-beheer"], undefined);
+  assert.ok(gedaan.includes("proef-beheer: weg (leeg)"));
+
+  // Nog een keer draaien verandert niets en voegt main niet dubbel toe.
+  regelOmgevingen("Org/app", { api: gh.api });
+  assert.deepEqual(gh.omgevingen.production.regels.map((r) => r.name), ["main"]);
+});
+
+test("regelOmgevingen: maakt ontbrekende omgevingen aan en laat een proef-beheer met geheimen staan", () => {
+  const gh = nepGitHub({ "proef-beheer": { regels: [], geheimen: 2 } });
+  const gedaan = regelOmgevingen("Org/app", { api: gh.api });
+  assert.deepEqual(gh.omgevingen.production.regels.map((r) => r.name), ["main"]);
+  assert.deepEqual(gh.omgevingen.preview.regels.map((r) => r.name), ["main"]);
+  assert.ok(gh.omgevingen["proef-beheer"]);
+  assert.ok(gedaan.some((g) => g.startsWith("proef-beheer: blijft")));
 });
