@@ -21,10 +21,10 @@
  *       toegang voor op de computer van de gebruiker (GitHub blijft de enige poort).
  *
  *   node nieuwe-app.mjs --json --inrichten --naam <naam> --eigenaar <org> [--groepen a,b]
- *       kijkt eerst of de app in toegang.json van <org>/stack-beheer staat. Zo niet, dan
- *       opent het een pull request op stack-beheer die hem toevoegt met de gekozen groepen
+ *       kijkt eerst of de app in toegang.json van <org>/stagetwo-beheer staat. Zo niet, dan
+ *       opent het een pull request op stagetwo-beheer die hem toevoegt met de gekozen groepen
  *       (status `wacht-op-toegang`; de eigenaar keurt goed, daarna opnieuw draaien). Staat
- *       hij erin, dan start het de workflow "App inrichten" in <org>/stack-beheer, wacht tot
+ *       hij erin, dan start het de workflow "App inrichten" in <org>/stagetwo-beheer, wacht tot
  *       hij klaar is en leest het resultaat uit het logboek. Zo komen Cloudflare en Supabase
  *       erbij zonder dat er een Cloudflare- of Supabase-sleutel op deze computer staat.
  *
@@ -135,7 +135,7 @@ export function controleerArgumenten(arg) {
 /**
  * Wie wordt de reviewer in CODEOWNERS? Altijd de bouwer zelf: hij merget zijn eigen
  * pull requests op groene checks, en Stage Two wil geen melding bij elke PR van elke
- * klant-app. Toegang en sleutels bewaakt de eigenaar in stack-beheer, niet hier.
+ * klant-app. Toegang en sleutels bewaakt de eigenaar in stagetwo-beheer, niet hier.
  */
 export function kiesReviewer({ login }) {
   return login;
@@ -460,7 +460,18 @@ function isKloonVan(map, repo) {
 
 // ---------------------------------------------------------------- inrichten
 
-export const BEHEER_REPO = "stack-beheer";
+// De beheer-repo heet sinds 13-10-2026 `stagetwo-beheer`. Klanten die eerder zijn aangesloten
+// hebben nog `stack-beheer`; die naam blijft werken tot ook daar de repo is hernoemd.
+export const BEHEER_REPO = "stagetwo-beheer";
+export const BEHEER_REPO_OUD = "stack-beheer";
+
+/** De beheer-repo van `eigenaar`: eerst de nieuwe naam, dan de oude, anders null. */
+export function kiesBeheerRepo(eigenaar, bestaat = repoBestaat) {
+  for (const naam of [BEHEER_REPO, BEHEER_REPO_OUD]) {
+    if (bestaat(`${eigenaar}/${naam}`)) return `${eigenaar}/${naam}`;
+  }
+  return null;
+}
 export const BEHEER_WORKFLOW = "app-inrichten.yml";
 
 /** De regel `INRICHTING {...}` uit het logboek van de workflow, of null. */
@@ -551,7 +562,7 @@ function vraagToegangAan(beheer, arg, toegang, sha) {
 
 /**
  * Start de workflow in de beheer-repo en wacht op het resultaat. `gh` doet al het werk
- * met de login van de gebruiker: die heeft Write op stack-beheer (mag starten) en leest
+ * met de login van de gebruiker: die heeft Write op stagetwo-beheer (mag starten) en leest
  * het logboek. Er komt geen sleutel van Cloudflare of Supabase aan te pas: die staan
  * alleen in de omgeving beheer van de beheer-repo.
  */
@@ -561,11 +572,11 @@ export function richtIn(arg, { cwd = process.cwd(), wachtMs = 5000, maxWachtMinu
   if (!ghAanwezig()) return { status: "mislukt", reden: "de GitHub-opdrachtregel (gh) ontbreekt; draai eerst /stack-cloudflare:installatie" };
   if (!ghIngelogd()) return { status: "mislukt", reden: "log eerst in bij GitHub met `gh auth login` (zie /stack-cloudflare:installatie)" };
 
-  const beheer = `${arg.eigenaar}/${BEHEER_REPO}`;
-  if (!isOrganisatie(arg.eigenaar) || !repoBestaat(beheer)) {
+  const beheer = isOrganisatie(arg.eigenaar) ? kiesBeheerRepo(arg.eigenaar) : null;
+  if (!beheer) {
     return {
       status: "geen-beheer",
-      reden: `${arg.eigenaar} heeft geen beheer-repo (${beheer}); Stage Two richt de hosting en de database in`,
+      reden: `${arg.eigenaar} heeft geen beheer-repo (${arg.eigenaar}/${BEHEER_REPO}); Stage Two richt de hosting en de database in`,
     };
   }
   const repo = `${arg.eigenaar}/${arg.naam}`;

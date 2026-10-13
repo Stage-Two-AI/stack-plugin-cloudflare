@@ -65,7 +65,8 @@ precieze bedrag.
   inricht, en dan is de app van het bedrijf en niet van één persoon. Is er geen
   organisatie, zeg dan dat Stage Two die eerst moet aanmaken, en stop hier.
 - **Wie erbij mag.** Lees de groepen uit de toegangslijst:
-  `gh api repos/<eigenaar>/stack-beheer/contents/toegang.json -H "Accept: application/vnd.github.raw"`.
+  `gh api repos/<eigenaar>/stagetwo-beheer/contents/toegang.json -H "Accept: application/vnd.github.raw"`
+  (bestaat die niet, dan heet de beheer-repo nog `stack-beheer`: gebruik dan die naam).
   Staat de naam van de app al onder `apps`, dan is dit al geregeld; zeg dat. Zo niet, toon
   dan de groepen (met wie erin zit, in gewone woorden) en laat de gebruiker kiezen. Zijn
   er geen groepen, dan maakt Stage Two die aan; ga gewoon door, stap 5b meldt het.
@@ -110,7 +111,7 @@ Zeg dan: "Ik maak hem nu aan; dat duurt een paar minuten." Draai hetzelfde comma
 ## Stap 5b: hosting, deur en database laten inrichten
 
 Hosting en deur (Cloudflare) en de database (Supabase) worden ingericht door de workflow
-**App inrichten** in de beheer-repo van de organisatie (`<eigenaar>/stack-beheer`), op
+**App inrichten** in de beheer-repo van de organisatie (`<eigenaar>/stagetwo-beheer`, bij oudere klanten nog `stack-beheer`), op
 GitHub. Daar staan alle sleutels; op deze computer komt bewust geen Cloudflare- of
 Supabase-toegang. Probeer dat nooit zelf te doen, ook niet als er een opdrachtregel voor
 blijkt te staan (`wrangler`, `supabase`).

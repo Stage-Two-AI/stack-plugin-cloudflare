@@ -139,7 +139,7 @@ GitHub en beschermt de hoofdtak. Hij eindigt met wat er nog open staat en met de
 volgende stap: open de nieuwe map in Claude Code en typ `/stack-cloudflare:verder-werken`.
 
 Hosting, deur en database worden daarna ingericht door de workflow **App inrichten** op
-GitHub, in de beheer-repo van je bedrijf (`stack-beheer`, Stage Two zet die bij de start
+GitHub, in de beheer-repo van je bedrijf (`stagetwo-beheer`, Stage Two zet die bij de start
 neer). Staat de app nog niet op de toegangslijst, dan opent je assistent eerst een
 voorstel (pull request) op die beheer-repo; de eigenaar keurt dat goed, en dan gaat het
 verder. Je assistent start de workflow en wacht op het resultaat. Dat is bewust zo
@@ -226,7 +226,7 @@ Deze repo is begonnen als kopie van `stack-plugin` 2.1.0. Wat anders is:
   de andere plugin over, ook als beide plugins op één computer staan;
 - `nieuwe-app` haalt de paden uit `nietMeenemen` weg, zet de Worker-naam in
   `wrangler.jsonc` op de appnaam, geeft elke app een eigen database, en `--inrichten`
-  controleert eerst `toegang.json` van `<org>/stack-beheer` (zo nodig een pull request)
+  controleert eerst `toegang.json` van `<org>/stagetwo-beheer` (zo nodig een pull request)
   en start dan de Cloudflare-variant van **App inrichten** (inputs `app` en `droogloop`);
 - `automatisch-bijwerken.mjs` zet de marketplace `stagetwo-cloudflare`.
 
@@ -286,9 +286,9 @@ gestart vanuit `Stack/bin/stack-sync.mjs`, dat het register en de ruleset meegee
 
 Vooraf: de template is publiek, de tag `stack-v<n>` van de nieuwste versie staat, de
 accounts van de klant staan (GitHub-organisatie op een betaald plan, Cloudflare met Zero
-Trust, Supabase) en `<klantorg>/stack-beheer` is ingericht met de Cloudflare-variant
+Trust, Supabase) en `<klantorg>/stagetwo-beheer` is ingericht met de Cloudflare-variant
 (`bin/klant-inrichten.sh --variant cloudflare` in Stage-Two-AI/stack-beheer), met minstens
-één groep in `toegang.json`. De klant heeft Write op stack-beheer, zodat hij de workflow
+één groep in `toegang.json`. De klant heeft Write op stagetwo-beheer, zodat hij de workflow
 mag starten; de sleutels staan in de omgeving `beheer` en zijn voor hem niet te lezen.
 
 1. Op Windows eerst Git (`winget install -e --id Git.Git` in PowerShell), dán de
