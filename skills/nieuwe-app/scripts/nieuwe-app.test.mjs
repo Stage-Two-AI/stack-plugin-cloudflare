@@ -16,6 +16,7 @@ import {
   foutTekst,
   hervatBesluit,
   installeer,
+  kiesBeheerRepo,
   regelOmgevingen,
   verwijderNietMeenemen,
   voegAppToe,
@@ -312,4 +313,10 @@ test("regelOmgevingen: maakt ontbrekende omgevingen aan en laat een proef-beheer
   assert.deepEqual(gh.omgevingen.preview.regels.map((r) => r.name), ["main"]);
   assert.ok(gh.omgevingen["proef-beheer"]);
   assert.ok(gedaan.some((g) => g.startsWith("proef-beheer: blijft")));
+});
+
+test("kiesBeheerRepo: eerst stagetwo-beheer, dan de oude naam stack-beheer, anders null", () => {
+  assert.equal(kiesBeheerRepo("klant", (r) => r === "klant/stagetwo-beheer" || r === "klant/stack-beheer"), "klant/stagetwo-beheer");
+  assert.equal(kiesBeheerRepo("klant", (r) => r === "klant/stack-beheer"), "klant/stack-beheer");
+  assert.equal(kiesBeheerRepo("klant", () => false), null);
 });
