@@ -19,3 +19,6 @@ Twee dingen die bij deze route horen en die de route zelf ook noemt:
   op deze computer volgens `.claude/launch.json`, tegen de testdatabase en nooit tegen
   productie. Start geen dev-server in Bash. Opleveren blijft altijd de pull request met
   de Cloudflare-preview (de workflow Preview uitrollen zet de link in de PR).
+- **Raakt de wijziging `supabase/functions/`**, dan zet je na de merge de functies live met de
+  workflow Functies uitrollen in de beheer-repo (stap "Na de merge" in de route). Zelf
+  `supabase functions deploy` draaien kan en mag niet: op deze computer is geen Supabase-toegang.
