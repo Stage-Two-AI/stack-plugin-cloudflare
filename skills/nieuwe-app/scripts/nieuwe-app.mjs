@@ -795,6 +795,13 @@ export function doeHet(arg, { cwd = process.cwd() } = {}) {
   }
 
   const ruleset = zetRuleset(repo);
+  // Branches van gemergde PR's laat GitHub zelf weghalen; anders stapelen ze zich op.
+  // Niet erg als het mislukt: dan blijven ze staan tot iemand ze opruimt.
+  try {
+    sh("gh", ["api", `repos/${repo}`, "-X", "PATCH", "-F", "delete_branch_on_merge=true"]);
+  } catch {
+    // bewust genegeerd
+  }
   try {
     omgevingen = regelOmgevingen(repo);
   } catch (fout) {
